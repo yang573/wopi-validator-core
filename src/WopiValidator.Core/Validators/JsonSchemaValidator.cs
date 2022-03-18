@@ -14,7 +14,7 @@ namespace Microsoft.Office.WopiValidator.Core.Validators
 {
 	class JsonSchemaValidator : IValidator
 	{
-		private readonly JsonSchema4 _schema;
+		private readonly JsonSchema _schema;
 
 		public JsonSchemaValidator(string schemaId)
 		{
