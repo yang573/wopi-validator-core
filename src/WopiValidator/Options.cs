@@ -11,13 +11,16 @@ namespace Microsoft.Office.WopiValidator
 	/// </summary>
 	class Options
 	{
-		[Option('w', "wopisrc", Required = true, HelpText = "WopiSrc URL for a wopitest file")]
+		[Option('k', "generate_keys", Required = false, HelpText = "Generate proof key pairs. Ignores all other arguments and skips running tests.")]
+		public bool GenerateKeys { get; set; }
+
+		[Option('w', "wopisrc", Required = false, HelpText = "Required. WopiSrc URL for a wopitest file")]
 		public string WopiEndpoint { get; set; }
 
-		[Option('t', "token", Required = true, HelpText = "WOPI access token")]
+		[Option('t', "token", Required = false, HelpText = "Required. WOPI access token")]
 		public string AccessToken { get; set; }
 
-		[Option('l', "token_ttl", Required = true, HelpText = "WOPI access token ttl")]
+		[Option('l', "token_ttl", Required = false, Default = -1, HelpText = "Required. WOPI access token ttl. Must be 0 or greater.")]
 		public long AccessTokenTtl { get; set; }
 
 		[Option('c', "config", Required = false, Default = "TestCases.xml", HelpText = "Path to XML file with test definitions")]

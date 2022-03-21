@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
+using System.Xml;
 
 namespace Microsoft.Office.WopiValidator.Core
 {
@@ -78,6 +79,74 @@ namespace Microsoft.Office.WopiValidator.Core
 
 	public class ProofKeysHelper
 	{
+		public static void GenerateProofKeys(string filePath, int keySize = 2048)
+		{
+			var proofRsaAlg = new RSACryptoServiceProvider(keySize);
+			var oldProofRsaAlg = new RSACryptoServiceProvider(keySize);
+			string proofKeys = proofRsaAlg.ToXmlString(true);
+			string oldProofKeys = oldProofRsaAlg.ToXmlString(true);
+
+			Console.WriteLine("Proof Public Key");
+			Console.WriteLine(Convert.ToBase64String(proofRsaAlg.ExportCspBlob(false)));
+			Console.WriteLine("Old Proof Public Key");
+			Console.WriteLine(Convert.ToBase64String(oldProofRsaAlg.ExportCspBlob(false)));
+
+			var writer = XmlWriter.Create(filePath);
+			writer.WriteStartDocument();
+			writer.WriteStartElement("keys");
+			writer.WriteStartElement("new");
+			writer.WriteRaw(proofKeys);
+			writer.WriteEndElement();
+			writer.WriteStartElement("old");
+			writer.WriteRaw(oldProofKeys);
+			writer.WriteEndElement();
+			writer.WriteEndElement();
+			writer.WriteEndDocument();
+			writer.Close();
+		}
+
+		public static (RSACryptoServiceProvider current, RSACryptoServiceProvider old) ImportProofKeys(string filePath)
+		{
+			var reader = XmlReader.Create(filePath);
+			string proofKeys = string.Empty, oldProofKeys = string.Empty;
+			while (reader.Read())
+			{
+				if (reader.NodeType == XmlNodeType.Element && reader.Name.Equals("new"))
+				{
+					proofKeys = reader.ReadOuterXml();
+				}
+				if (reader.NodeType == XmlNodeType.Element && reader.Name.Equals("old"))
+				{
+					oldProofKeys = reader.ReadOuterXml();
+				}
+			}
+
+			if (proofKeys.Length == 0 || oldProofKeys.Length == 0)
+			{
+				throw new ArgumentException("Could not load proof keys.");
+			}
+
+			var proofRsaAlg = new RSACryptoServiceProvider();
+			proofRsaAlg.FromXmlString(proofKeys);
+			var oldProofRsaAlg = new RSACryptoServiceProvider();
+			oldProofRsaAlg.FromXmlString(oldProofKeys);
+
+			return (proofRsaAlg, oldProofRsaAlg);
+		}
+
+		public static ProofKeyOutput GetSignedProofData(ProofKeyInput proofData, RSACryptoServiceProvider rsaAlg)
+		{
+			ProofKeyOutput output = GetProofData(proofData);
+
+			using (SHA256CryptoServiceProvider hashAlg = new SHA256CryptoServiceProvider())
+			{
+				byte[] signedProofBytes = rsaAlg.SignData(output.PreSigningBytes, hashAlg);
+				output.SignedBase64ProofKey = Convert.ToBase64String(signedProofBytes);
+
+				return output;
+			}
+		}
+
 		private static ProofKeyOutput GetProofData(ProofKeyInput proofData)
 		{
 			if (proofData.AccessToken == null) {
@@ -132,19 +201,6 @@ namespace Microsoft.Office.WopiValidator.Core
 				timeStampLength,
 				timeStampLengthBytes,
 				preSigningBytes);
-		}
-
-		public static ProofKeyOutput GetSignedProofData(ProofKeyInput proofData, RSACryptoServiceProvider rsaAlg)
-		{
-			ProofKeyOutput output = GetProofData(proofData);
-
-			using (SHA256CryptoServiceProvider hashAlg = new SHA256CryptoServiceProvider())
-			{
-				byte[] signedProofBytes = rsaAlg.SignData(output.PreSigningBytes, hashAlg);
-				output.SignedBase64ProofKey = Convert.ToBase64String(signedProofBytes);
-
-				return output;
-			}
 		}
 
 		private static byte[] EncodeNumber(int value)

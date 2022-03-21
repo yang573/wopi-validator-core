@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace Microsoft.Office.WopiValidator
@@ -21,7 +22,14 @@ namespace Microsoft.Office.WopiValidator
 
 	internal class Program
 	{
-		private static TestCaseExecutor GetTestCaseExecutor(TestExecutionData testExecutionData, Options options, TestCategory inputTestCategory)
+		const string ProofKeysFilePath = "proof-keys.xml";
+
+		private static TestCaseExecutor GetTestCaseExecutor(
+			TestExecutionData testExecutionData,
+			Options options,
+			TestCategory inputTestCategory,
+			RSACryptoServiceProvider proofKeyProviderNew,
+			RSACryptoServiceProvider proofKeyProviderOld)
 		{
 			TestCategory testCategory;
 			if (!Enum.TryParse(testExecutionData.TestCase.Category, true /* ignoreCase */, out testCategory))
@@ -31,7 +39,7 @@ namespace Microsoft.Office.WopiValidator
 
 			string userAgent = (inputTestCategory == TestCategory.OfficeNativeClient || testCategory == TestCategory.OfficeNativeClient) ? Constants.HeaderValues.OfficeNativeClientUserAgent : null;
 
-			return new TestCaseExecutor(testExecutionData, options.WopiEndpoint, options.AccessToken, options.AccessTokenTtl, userAgent);
+			return new TestCaseExecutor(testExecutionData, options.WopiEndpoint, options.AccessToken, options.AccessTokenTtl, userAgent, proofKeyProviderNew, proofKeyProviderOld);
 		}
 
 		private static int Main(string[] args)
@@ -62,6 +70,59 @@ namespace Microsoft.Office.WopiValidator
 
 		private static ExitCode Execute(Options options)
 		{
+			// Check if we're generating proof keys
+			if (options.GenerateKeys)
+			{
+				try
+				{
+					ProofKeysHelper.GenerateProofKeys(ProofKeysFilePath);
+				}
+				catch (Exception ex)
+				{
+					WriteToConsole(ex.Message, ConsoleColor.Red);
+					return ExitCode.Failure;
+				}
+				return ExitCode.Success;
+			}
+
+			// Check that we have the required parameters
+			bool isParamMissing = false;
+			if (string.IsNullOrEmpty(options.WopiEndpoint))
+			{
+				WriteToConsole("Required option 'w, wopisrc' is missing.\n", ConsoleColor.Red);
+				isParamMissing = true;
+			}
+			if (string.IsNullOrEmpty(options.AccessToken))
+			{
+				WriteToConsole("Required option 't, token' is missing.\n", ConsoleColor.Red);
+				isParamMissing = true;
+			}
+			if (options.AccessTokenTtl == -1)
+			{
+				WriteToConsole("Required option 'l, token_ttl' is missing.\n", ConsoleColor.Red);
+				isParamMissing = true;
+			}
+
+			if (isParamMissing)
+			{
+				WriteToConsole("\nRun with --help to see details.\n", ConsoleColor.White);
+				return ExitCode.Failure;
+			}
+
+			// Get proof keys
+			RSACryptoServiceProvider proofKeyProviderNew = null, proofKeyProviderOld = null;
+			try
+			{
+				var result = ProofKeysHelper.ImportProofKeys(ProofKeysFilePath);
+				proofKeyProviderNew = result.current;
+				proofKeyProviderOld = result.old;
+			}
+			catch (Exception ex)
+			{
+				WriteToConsole(ex.Message, ConsoleColor.Red);
+				return ExitCode.Failure;
+			}
+
 			// get run configuration from XML
 			IEnumerable<TestExecutionData> testData = ConfigParser.ParseExecutionData(options.RunConfigurationFilePath, options.TestCategory);
 
@@ -85,7 +146,7 @@ namespace Microsoft.Office.WopiValidator
 				.Select(g => new
 				{
 					Name = g.Key,
-					Executors = g.Select(x => GetTestCaseExecutor(x, options, options.TestCategory))
+					Executors = g.Select(x => GetTestCaseExecutor(x, options, options.TestCategory, proofKeyProviderNew, proofKeyProviderOld))
 				});
 
 			ConsoleColor baseColor = ConsoleColor.White;

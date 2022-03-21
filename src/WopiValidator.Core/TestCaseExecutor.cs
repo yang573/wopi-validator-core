@@ -22,8 +22,8 @@ namespace Microsoft.Office.WopiValidator.Core
 			string accessToken,
 			long accessTokenTtl,
 			string userAgent,
-			RSACryptoServiceProvider proofKeyProviderNew = null,
-			RSACryptoServiceProvider proofKeyProviderOld = null)
+			RSACryptoServiceProvider proofKeyProviderNew,
+			RSACryptoServiceProvider proofKeyProviderOld)
 		{
 			TestCase = executionData.TestCase;
 			PrereqCases = executionData.PrereqCases;
